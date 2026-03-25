@@ -3,7 +3,7 @@
 
 """
 ChatGPT Auto-Registrator
-Усиленный поиск поля пароля (с запасными вариантами)
+Фиксированный пароль: Mudakiv12345@
 """
 
 import time
@@ -21,11 +21,8 @@ OUTPUT_FILE = "chatgpt_accounts.txt"
 FIRSTMAIL_API = "https://firstmail.ltd/api/v1/email/messages"
 FIRSTMAIL_TOKEN = "kv3wxML6Ibxo2ok1SPJCVonQIM09TWDgqjf0_S3BcVWIfvZVx9XlqcioEKn6qiXt"
 DELAY_STEP = 5
+FIXED_PASSWORD = "Mudakiv12345@"  # Фиксированный пароль
 # =====================================================
-
-def generate_chatgpt_password():
-    chars = string.ascii_letters + string.digits
-    return ''.join(random.choices(chars, k=12))
 
 def get_verification_code(email, password, timeout=120):
     headers = {
@@ -68,7 +65,7 @@ def get_verification_code(email, password, timeout=120):
     return None
 
 def register_chatgpt(email, email_password):
-    chatgpt_password = generate_chatgpt_password()
+    chatgpt_password = FIXED_PASSWORD
     
     print(f"\n{'='*50}")
     print(f"[*] Почта: {email}")
@@ -130,26 +127,18 @@ def register_chatgpt(email, email_password):
         # ========== ЭТАП 8: Ожидание поля пароля ==========
         print("\n--- ЭТАП 8: Ожидание поля пароля ---")
         
-        # Сохраняем скриншот для отладки
-        sb.save_screenshot("after_code.png")
-        print("[*] Сохранён скриншот: after_code.png")
-        
         # Поле пароля - пробуем разные варианты
         password_selectors = [
             "input[name='password']",
             "input[type='password']",
             "input[id*='password']",
-            "input[id*='new-password']",
-            "//input[@type='password']"
+            "input[id*='new-password']"
         ]
         
         password_field = None
         for selector in password_selectors:
             try:
-                if selector.startswith("//"):
-                    password_field = sb.find_element(selector, timeout=5)
-                else:
-                    password_field = sb.find_element(selector, timeout=5)
+                password_field = sb.find_element(selector, timeout=5)
                 if password_field and password_field.is_displayed():
                     print(f"[✓] Поле пароля найдено: {selector}")
                     break
@@ -158,17 +147,13 @@ def register_chatgpt(email, email_password):
         
         if not password_field:
             print("[-] Поле пароля не найдено")
-            print("[*] Выводим HTML страницы для отладки...")
-            with open("page_debug.html", "w") as f:
-                f.write(sb.get_page_source())
-            print("[*] Сохранён файл: page_debug.html")
             return False
         
         # ========== ЭТАП 9: Ввод пароля ==========
         print("\n--- ЭТАП 9: Ввод пароля (5 сек) ---")
         password_field.clear()
         password_field.send_keys(chatgpt_password)
-        print("[✓] Пароль введён")
+        print(f"[✓] Пароль введён: {chatgpt_password}")
         time.sleep(DELAY_STEP)
         
         # ========== ЭТАП 10: Нажатие Continue ==========
@@ -201,7 +186,7 @@ def load_emails():
 def main():
     print("=" * 60)
     print("ChatGPT Auto-Registrator")
-    print("Усиленный поиск поля пароля")
+    print(f"Фиксированный пароль: {FIXED_PASSWORD}")
     print("=" * 60)
     
     emails = load_emails()
@@ -212,7 +197,7 @@ def main():
     print("   1. Cloudflare обходится автоматически")
     print("   2. Email → Continue")
     print("   3. Код из почты → Continue")
-    print("   4. Пароль → Continue")
+    print(f"   4. Пароль {FIXED_PASSWORD} → Continue")
     print("=" * 60)
     
     try:
