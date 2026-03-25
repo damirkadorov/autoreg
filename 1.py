@@ -3,7 +3,7 @@
 
 """
 Mail.ee Auto-Registrator с SeleniumBase
-Принудительное отображение браузера (headless2=False)
+Правильный селектор для кнопки куки: id="accept-btn"
 """
 
 import time
@@ -45,8 +45,7 @@ def register_mail_ee():
     print(f"[*] Пароль: {password}")
     print(f"{'='*50}")
     
-    # КЛЮЧЕВОЕ: headless2=False - отключает headless режим
-    with SB(uc=True, headless2=False, incognito=True) as sb:
+    with SB(uc=True, headless=False, headless2=False) as sb:
         
         # 1. Открыть страницу
         print("\n--- ЭТАП 1: Открытие страницы ---")
@@ -54,22 +53,22 @@ def register_mail_ee():
         print("[✓] Страница открыта")
         time.sleep(5)
         
-        # Сохраняем скриншот
-        sb.save_screenshot("page_after_load.png")
-        print("[*] Скриншот: page_after_load.png")
-        
-        # 2. Принять куки (кнопка "NÕUSTUN")
+        # 2. Принять куки (точный селектор id="accept-btn")
         print("\n--- ЭТАП 2: Принятие куки ---")
         try:
-            # Пробуем найти кнопку по тексту
-            sb.click("NÕUSTUN", timeout=10)
-            print("[✓] Куки приняты")
+            sb.click("#accept-btn", timeout=10)
+            print("[✓] Куки приняты (кнопка #accept-btn)")
         except:
+            # Запасной вариант: поиск по тексту
             try:
-                sb.click("Nõustun", timeout=5)
-                print("[✓] Куки приняты")
+                sb.click("NÕUSTUN", timeout=5)
+                print("[✓] Куки приняты (по тексту)")
             except:
-                print("[!] Кнопка куки не найдена")
+                try:
+                    sb.click("Nõustun", timeout=5)
+                    print("[✓] Куки приняты (по тексту)")
+                except:
+                    print("[!] Кнопка куки не найдена")
         time.sleep(3)
         
         # 3. Ввод имени пользователя
@@ -80,7 +79,6 @@ def register_mail_ee():
             print(f"[✓] Имя введено: {username}")
         except Exception as e:
             print(f"[-] Не найдено поле ввода имени: {e}")
-            sb.save_screenshot("error_no_username_field.png")
             return False
         
         time.sleep(DELAY_STEP)
@@ -166,17 +164,20 @@ def register_mail_ee():
 def main():
     print("=" * 60)
     print("Mail.ee Account Generator с SeleniumBase")
-    print("Браузер ВИДИМ (headless2=False)")
+    print("Точный селектор куки: #accept-btn")
     print("=" * 60)
     
-    # Устанавливаем DISPLAY если нужно
+    # Проверяем DISPLAY
     if "DISPLAY" not in os.environ:
         os.environ["DISPLAY"] = ":0"
         print("[*] Установлен DISPLAY=:0")
     
+    print(f"[*] Текущий DISPLAY: {os.environ.get('DISPLAY')}")
+    
     print("\n⚠️ ВНИМАНИЕ:")
-    print("   - Браузер должен открыться в НОВОМ окне")
+    print("   - Браузер будет ВИДИМ")
     print("   - Cloudflare обходится автоматически")
+    print("   - Кнопка куки: #accept-btn")
     print("   - hCaptcha решается вручную")
     print("=" * 60)
     
