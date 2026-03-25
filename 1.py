@@ -3,14 +3,13 @@
 
 """
 Mail.ee Auto-Registrator с SeleniumBase
-Принудительное отображение браузера
+Упрощённая версия
 """
 
 import time
 import random
 import string
 import os
-import subprocess
 
 from seleniumbase import SB
 
@@ -36,45 +35,13 @@ def generate_password(length=14):
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
     return ''.join(random.choices(chars, k=length))
 
-def ensure_display():
-    """Проверяет и устанавливает DISPLAY переменную"""
-    if "DISPLAY" not in os.environ:
-        os.environ["DISPLAY"] = ":0"
-        print("[*] Установлен DISPLAY=:0")
-    
-    print(f"[*] Текущий DISPLAY: {os.environ.get('DISPLAY')}")
-
 def click_cookie_button(sb, timeout=10):
-    """Клик по кнопке куки в qc-cmp2-container"""
-    
+    """Клик по кнопке куки"""
     start = time.time()
     while time.time() - start < timeout:
         try:
-            # Ищем кнопку "NÕUSTUN" внутри контейнера куки
+            # Ищем кнопку "NÕUSTUN"
             js_click = """
-            var container = document.querySelector('.qc-cmp2-container');
-            if(container) {
-                var buttons = container.querySelectorAll('button');
-                for(var i=0; i<buttons.length; i++) {
-                    var text = buttons[i].innerText || buttons[i].textContent;
-                    if(text && (text.includes('NÕUSTUN') || text.includes('Nõustun'))) {
-                        buttons[i].click();
-                        return true;
-                    }
-                }
-            }
-            return false;
-            """
-            result = sb.execute_script(js_click)
-            if result:
-                print("[✓] Куки приняты (клик по кнопке в qc-cmp2-container)")
-                return True
-        except:
-            pass
-        
-        # Альтернативный поиск
-        try:
-            js_find_all = """
             var buttons = document.querySelectorAll('button');
             for(var i=0; i<buttons.length; i++) {
                 var text = buttons[i].innerText || buttons[i].textContent;
@@ -85,13 +52,12 @@ def click_cookie_button(sb, timeout=10):
             }
             return false;
             """
-            result = sb.execute_script(js_find_all)
+            result = sb.execute_script(js_click)
             if result:
-                print("[✓] Куки приняты (поиск по всем кнопкам)")
+                print("[✓] Куки приняты")
                 return True
         except:
             pass
-        
         time.sleep(1)
     
     print("[!] Кнопка куки не найдена")
@@ -107,20 +73,11 @@ def register_mail_ee():
     print(f"[*] Пароль: {password}")
     print(f"{'='*50}")
     
-    # Принудительные настройки для видимого браузера
-    with SB(
-        uc=True,           # Undetected mode
-        headless=False,    # ВАЖНО: НЕ headless
-        incognito=True,    # Приватный режим
-        ad_block_on=False, # Не блокируем рекламу (может мешать)
-        window_size=(1280, 720),
-        browser="chrome",  # Используем Chrome
-        demo_mode=False,   # Отключаем demo mode (может мешать)
-    ) as sb:
+    # Упрощённые настройки SeleniumBase
+    with SB(uc=True, headless=False) as sb:
         
         # 1. Открыть страницу
         print("\n--- ЭТАП 1: Открытие страницы ---")
-        print("[*] Ожидание открытия браузера...")
         sb.uc_open_with_reconnect("https://login.mail.ee/signup?go=portal", 30)
         print("[✓] Страница открыта")
         time.sleep(5)
@@ -228,29 +185,18 @@ def register_mail_ee():
 def main():
     print("=" * 60)
     print("Mail.ee Account Generator с SeleniumBase")
-    print("Принудительное отображение браузера")
     print("=" * 60)
     
-    # Проверяем DISPLAY
-    ensure_display()
+    # Устанавливаем DISPLAY если нужно
+    if "DISPLAY" not in os.environ:
+        os.environ["DISPLAY"] = ":0"
+        print("[*] Установлен DISPLAY=:0")
     
     print("\n⚠️ ВНИМАНИЕ:")
     print("   - Браузер должен открыться в НОВОМ окне")
-    print("   - Если окно не появляется, проверьте:")
-    print("     export DISPLAY=:0")
     print("   - Cloudflare обходится автоматически")
     print("   - hCaptcha решается вручную")
     print("=" * 60)
-    
-    # Проверка, что не в headless режиме
-    print("\n[*] Проверка графической среды...")
-    try:
-        import tkinter
-        tkinter.Tk().destroy()
-        print("[✓] Графическая среда доступна")
-    except:
-        print("[!] Графическая среда может быть недоступна")
-        print("[*] Попробуйте: export DISPLAY=:0")
     
     try:
         count = int(input("\nСколько аккаунтов создать: ") or 1)
