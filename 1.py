@@ -3,7 +3,7 @@
 
 """
 ChatGPT Registration Bot
-Универсальный поиск полей по HTML (лейблы, placeholder)
+Простой IMAP поиск (без фильтрации)
 """
 
 import time
@@ -33,41 +33,56 @@ def human_type(element, text, delay_min=0.05, delay_max=0.15):
         time.sleep(random.uniform(delay_min, delay_max))
 
 def get_verification_code(email, password, timeout=120):
+    """Получает код через IMAP - простой поиск по всем письмам"""
     try:
+        print(f"[*] Подключение к IMAP {FIRSTMAIL_IMAP}:{FIRSTMAIL_IMAP_PORT}")
         mail = imaplib.IMAP4_SSL(FIRSTMAIL_IMAP, FIRSTMAIL_IMAP_PORT)
         mail.login(email, password)
         mail.select('inbox')
         
         start_time = time.time()
+        last_msg_count = 0
+        
         while time.time() - start_time < timeout:
-            print(f"[*] Проверка писем...")
-            result, data = mail.search(None, '(FROM "openai.com" OR FROM "tm.openai.com")')
-            
-            if result == 'OK' and data[0]:
-                email_ids = data[0].split()
-                if email_ids:
-                    latest_id = email_ids[-1]
-                    result, msg_data = mail.fetch(latest_id, '(RFC822)')
-                    msg = email.message_from_bytes(msg_data[0][1])
+            # Получаем количество писем
+            result, data = mail.status('INBOX', '(MESSAGES)')
+            if result == 'OK':
+                msg_count = int(data[0].split()[2].decode())
+                print(f"[*] Писем в ящике: {msg_count}")
+                
+                if msg_count > last_msg_count:
+                    print(f"[*] Новое письмо! (было {last_msg_count}, стало {msg_count})")
+                    last_msg_count = msg_count
                     
-                    body = ""
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            if part.get_content_type() == "text/plain":
-                                payload = part.get_payload(decode=True)
-                                body = payload.decode('utf-8', errors='ignore')
-                                break
-                    else:
-                        payload = msg.get_payload(decode=True)
-                        body = payload.decode('utf-8', errors='ignore')
-                    
-                    match = re.search(r'\b(\d{6})\b', body)
-                    if match:
-                        code = match.group(1)
-                        print(f"[+] Код: {code}")
-                        mail.close()
-                        mail.logout()
-                        return code
+                    # Получаем последние письма
+                    result, data = mail.fetch(str(msg_count), '(RFC822)')
+                    if result == 'OK':
+                        msg = email.message_from_bytes(data[0][1])
+                        
+                        # Отправитель
+                        from_header = msg.get("From", "")
+                        print(f"[DEBUG] От: {from_header}")
+                        
+                        # Тело письма
+                        body = ""
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                if part.get_content_type() == "text/plain":
+                                    payload = part.get_payload(decode=True)
+                                    body = payload.decode('utf-8', errors='ignore')
+                                    break
+                        else:
+                            payload = msg.get_payload(decode=True)
+                            body = payload.decode('utf-8', errors='ignore')
+                        
+                        # Ищем код
+                        match = re.search(r'\b(\d{6})\b', body)
+                        if match:
+                            code = match.group(1)
+                            print(f"[+] Код найден: {code}")
+                            mail.close()
+                            mail.logout()
+                            return code
             
             time.sleep(5)
         
@@ -76,17 +91,17 @@ def get_verification_code(email, password, timeout=120):
         
     except Exception as e:
         print(f"[!] Ошибка IMAP: {e}")
+        import traceback
+        traceback.print_exc()
     
+    print(f"[-] Код не получен за {timeout} сек")
     return None
 
 def find_field_by_label(sb, label_text, timeout=5):
-    """Ищет поле ввода по тексту лейбла"""
     try:
-        # Ищем лейбл с текстом
         xpath = f"//label[contains(text(), '{label_text}')]"
         label = sb.find_element(xpath, timeout=timeout)
         if label:
-            # Ищем связанный input
             for_id = label.get_attribute("for")
             if for_id:
                 try:
@@ -95,18 +110,8 @@ def find_field_by_label(sb, label_text, timeout=5):
                         return field
                 except:
                     pass
-            
-            # Ищем input рядом с лейблом
             try:
                 field = sb.find_element(f"{xpath}/following-sibling::input", timeout=2)
-                if field:
-                    return field
-            except:
-                pass
-            
-            # Ищем input внутри родителя
-            try:
-                field = sb.find_element(f"{xpath}/ancestor::div//input", timeout=2)
                 if field:
                     return field
             except:
@@ -116,7 +121,6 @@ def find_field_by_label(sb, label_text, timeout=5):
     return None
 
 def find_field_by_placeholder(sb, placeholder_text, timeout=5):
-    """Ищет поле ввода по placeholder"""
     try:
         field = sb.find_element(f"input[placeholder*='{placeholder_text}']", timeout=timeout)
         if field:
@@ -126,7 +130,6 @@ def find_field_by_placeholder(sb, placeholder_text, timeout=5):
     return None
 
 def find_field_by_type(sb, input_type, timeout=5):
-    """Ищет поле ввода по типу"""
     try:
         field = sb.find_element(f"input[type='{input_type}']", timeout=timeout)
         if field:
@@ -136,33 +139,21 @@ def find_field_by_type(sb, input_type, timeout=5):
     return None
 
 def find_password_field(sb, timeout=10):
-    """Ищет поле пароля разными способами"""
-    
-    # Способ 1: по лейблу "Password"
     field = find_field_by_label(sb, "Password", timeout)
     if field:
         print("[✓] Поле пароля найдено по лейблу 'Password'")
         return field
     
-    # Способ 2: по лейблу "Пароль"
-    field = find_field_by_label(sb, "Пароль", timeout)
-    if field:
-        print("[✓] Поле пароля найдено по лейблу 'Пароль'")
-        return field
-    
-    # Способ 3: по placeholder "Password"
     field = find_field_by_placeholder(sb, "Password", timeout)
     if field:
         print("[✓] Поле пароля найдено по placeholder 'Password'")
         return field
     
-    # Способ 4: по типу password
     field = find_field_by_type(sb, "password", timeout)
     if field:
         print("[✓] Поле пароля найдено по type='password'")
         return field
     
-    # Способ 5: по атрибуту name содержащему password
     try:
         field = sb.find_element("input[name*='password']", timeout=timeout)
         if field:
@@ -172,43 +163,6 @@ def find_password_field(sb, timeout=10):
         pass
     
     print("[-] Поле пароля не найдено")
-    return None
-
-def find_name_field(sb, timeout=5):
-    """Ищет поле имени"""
-    for label in ["First name", "Name", "Имя", "Full name"]:
-        field = find_field_by_label(sb, label, timeout)
-        if field:
-            return field
-    
-    for placeholder in ["Name", "First name", "Имя"]:
-        field = find_field_by_placeholder(sb, placeholder, timeout)
-        if field:
-            return field
-    
-    try:
-        field = sb.find_element("input[name='first_name']", timeout=timeout)
-        if field:
-            return field
-    except:
-        pass
-    
-    return None
-
-def find_date_field(sb, timeout=5):
-    """Ищет поле даты рождения"""
-    for label in ["Birth date", "Date of birth", "Дата рождения"]:
-        field = find_field_by_label(sb, label, timeout)
-        if field:
-            return field
-    
-    try:
-        field = sb.find_element("input[type='date']", timeout=timeout)
-        if field:
-            return field
-    except:
-        pass
-    
     return None
 
 def register_chatgpt(email, email_password):
@@ -247,7 +201,7 @@ def register_chatgpt(email, email_password):
             return False
         time.sleep(DELAY_STEP)
         
-        # 4. Continue после email
+        # 4. Continue
         print("\n[4] Continue...")
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
@@ -263,7 +217,7 @@ def register_chatgpt(email, email_password):
         print(f"[✓] Пароль: {chatgpt_password}")
         time.sleep(DELAY_STEP)
         
-        # 6. Continue после пароля
+        # 6. Continue
         print("\n[6] Continue...")
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
@@ -289,42 +243,10 @@ def register_chatgpt(email, email_password):
         human_type(code_field, code)
         time.sleep(DELAY_STEP)
         
-        # 10. Continue после кода
+        # 10. Continue
         print("\n[10] Continue...")
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
-        
-        # 11. Имя
-        print("\n[11] Поиск поля имени...")
-        name_field = find_name_field(sb, timeout=5)
-        if name_field:
-            human_type(name_field, "John Smith")
-            print("[✓] Имя: John Smith")
-            time.sleep(DELAY_STEP)
-            try:
-                sb.click("button[type='submit']")
-                print("[✓] Continue после имени")
-                time.sleep(DELAY_STEP)
-            except:
-                pass
-        else:
-            print("[!] Поле имени не найдено")
-        
-        # 12. Дата рождения
-        print("\n[12] Поиск поля даты...")
-        date_field = find_date_field(sb, timeout=5)
-        if date_field:
-            human_type(date_field, "2000-01-01")
-            print("[✓] Дата: 2000-01-01")
-            time.sleep(DELAY_STEP)
-            try:
-                sb.click("button[type='submit']")
-                print("[✓] Continue после даты")
-                time.sleep(DELAY_STEP)
-            except:
-                pass
-        else:
-            print("[!] Поле даты не найдено")
         
         # Сохранение
         with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
@@ -350,7 +272,7 @@ def load_emails():
 def main():
     print("=" * 60)
     print("ChatGPT Registration Bot")
-    print("Универсальный поиск полей (по лейблам, placeholder, типу)")
+    print(f"IMAP: {FIRSTMAIL_IMAP}:{FIRSTMAIL_IMAP_PORT}")
     print("=" * 60)
     
     emails = load_emails()
