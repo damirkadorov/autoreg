@@ -3,13 +3,14 @@
 
 """
 Mail.ee Auto-Registrator с SeleniumBase
-Правильные селекторы для куки (qc-cmp2-container)
+Принудительное отображение браузера
 """
 
 import time
 import random
 import string
 import os
+import subprocess
 
 from seleniumbase import SB
 
@@ -34,6 +35,14 @@ def generate_username():
 def generate_password(length=14):
     chars = string.ascii_letters + string.digits + "!@#$%^&*"
     return ''.join(random.choices(chars, k=length))
+
+def ensure_display():
+    """Проверяет и устанавливает DISPLAY переменную"""
+    if "DISPLAY" not in os.environ:
+        os.environ["DISPLAY"] = ":0"
+        print("[*] Установлен DISPLAY=:0")
+    
+    print(f"[*] Текущий DISPLAY: {os.environ.get('DISPLAY')}")
 
 def click_cookie_button(sb, timeout=10):
     """Клик по кнопке куки в qc-cmp2-container"""
@@ -63,7 +72,7 @@ def click_cookie_button(sb, timeout=10):
         except:
             pass
         
-        # Альтернативный поиск по всем кнопкам с текстом
+        # Альтернативный поиск
         try:
             js_find_all = """
             var buttons = document.querySelectorAll('button');
@@ -98,10 +107,20 @@ def register_mail_ee():
     print(f"[*] Пароль: {password}")
     print(f"{'='*50}")
     
-    with SB(uc=True, ad_block_on=True, incognito=True, headless=False) as sb:
+    # Принудительные настройки для видимого браузера
+    with SB(
+        uc=True,           # Undetected mode
+        headless=False,    # ВАЖНО: НЕ headless
+        incognito=True,    # Приватный режим
+        ad_block_on=False, # Не блокируем рекламу (может мешать)
+        window_size=(1280, 720),
+        browser="chrome",  # Используем Chrome
+        demo_mode=False,   # Отключаем demo mode (может мешать)
+    ) as sb:
         
         # 1. Открыть страницу
         print("\n--- ЭТАП 1: Открытие страницы ---")
+        print("[*] Ожидание открытия браузера...")
         sb.uc_open_with_reconnect("https://login.mail.ee/signup?go=portal", 30)
         print("[✓] Страница открыта")
         time.sleep(5)
@@ -110,7 +129,7 @@ def register_mail_ee():
         sb.save_screenshot("page_after_load.png")
         print("[*] Скриншот: page_after_load.png")
         
-        # 2. Принять куки (кнопка в qc-cmp2-container)
+        # 2. Принять куки
         print("\n--- ЭТАП 2: Принятие куки ---")
         click_cookie_button(sb, timeout=10)
         time.sleep(3)
@@ -209,14 +228,29 @@ def register_mail_ee():
 def main():
     print("=" * 60)
     print("Mail.ee Account Generator с SeleniumBase")
-    print("Правильные селекторы для куки (qc-cmp2-container)")
+    print("Принудительное отображение браузера")
     print("=" * 60)
+    
+    # Проверяем DISPLAY
+    ensure_display()
+    
     print("\n⚠️ ВНИМАНИЕ:")
-    print("   - Браузер будет ВИДИМ")
+    print("   - Браузер должен открыться в НОВОМ окне")
+    print("   - Если окно не появляется, проверьте:")
+    print("     export DISPLAY=:0")
     print("   - Cloudflare обходится автоматически")
-    print("   - Кнопка куки ищется в блоке qc-cmp2-container")
     print("   - hCaptcha решается вручную")
     print("=" * 60)
+    
+    # Проверка, что не в headless режиме
+    print("\n[*] Проверка графической среды...")
+    try:
+        import tkinter
+        tkinter.Tk().destroy()
+        print("[✓] Графическая среда доступна")
+    except:
+        print("[!] Графическая среда может быть недоступна")
+        print("[*] Попробуйте: export DISPLAY=:0")
     
     try:
         count = int(input("\nСколько аккаунтов создать: ") or 1)
