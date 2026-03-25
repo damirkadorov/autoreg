@@ -3,9 +3,7 @@
 
 """
 ChatGPT Auto-Registrator
-- Поиск поля пароля по тексту "Password"
-- Реалистичная печать как на клавиатуре
-- Пауза 3 секунды на этап
+Правильный порядок: email → пароль → код
 """
 
 import time
@@ -22,7 +20,7 @@ EMAILS_FILE = "emails.txt"
 OUTPUT_FILE = "chatgpt_accounts.txt"
 FIRSTMAIL_API = "https://firstmail.ltd/api/v1/email/messages"
 FIRSTMAIL_TOKEN = "kv3wxML6Ibxo2ok1SPJCVonQIM09TWDgqjf0_S3BcVWIfvZVx9XlqcioEKn6qiXt"
-DELAY_STEP = 3  # 3 секунды на этап
+DELAY_STEP = 3
 FIXED_PASSWORD = "Mudakiv12345@"
 # =====================================================
 
@@ -79,14 +77,12 @@ def find_password_field(sb, timeout=10):
     try:
         label = sb.find_element("//label[contains(text(), 'Password')]", timeout=timeout)
         if label:
-            # Находим input, связанный с этим лейблом
             for_id = label.get_attribute("for")
             if for_id:
                 field = sb.find_element(f"#{for_id}", timeout=3)
                 if field:
                     print("[✓] Поле пароля найдено через лейбл (for)")
                     return field
-            # Ищем input внутри или рядом
             field = sb.find_element(".//following-sibling::input", timeout=3)
             if field:
                 print("[✓] Поле пароля найдено через лейбл (сосед)")
@@ -110,15 +106,6 @@ def find_password_field(sb, timeout=10):
             if field.is_displayed():
                 print("[✓] Поле пароля найдено через type='password'")
                 return field
-    except:
-        pass
-    
-    # Способ 4: Ищем любой input с атрибутом name содержащим "password"
-    try:
-        field = sb.find_element("input[name*='password']", timeout=timeout)
-        if field:
-            print("[✓] Поле пароля найдено через name*='password'")
-            return field
     except:
         pass
     
@@ -160,8 +147,25 @@ def register_chatgpt(email, email_password):
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
-        # ========== ЭТАП 5: Ожидание кода ==========
-        print("\n--- ЭТАП 5: Ожидание кода подтверждения ---")
+        # ========== ЭТАП 5: Ввод пароля ==========
+        print("\n--- ЭТАП 5: Поиск поля пароля и ввод (3 сек) ---")
+        
+        password_field = find_password_field(sb, timeout=10)
+        if not password_field:
+            print("[-] Поле пароля не найдено")
+            return False
+        
+        human_type(password_field, chatgpt_password)
+        print(f"[✓] Пароль введён: {chatgpt_password}")
+        time.sleep(DELAY_STEP)
+        
+        # ========== ЭТАП 6: Нажатие Continue после пароля ==========
+        print("\n--- ЭТАП 6: Нажатие Continue (3 сек) ---")
+        sb.click("button[type='submit']")
+        time.sleep(DELAY_STEP)
+        
+        # ========== ЭТАП 7: Ожидание кода ==========
+        print("\n--- ЭТАП 7: Ожидание кода подтверждения ---")
         
         # Ждём поле для кода
         try:
@@ -177,35 +181,14 @@ def register_chatgpt(email, email_password):
             print("[-] Не удалось получить код")
             return False
         
-        # ========== ЭТАП 6: Ввод кода ==========
-        print(f"\n--- ЭТАП 6: Ввод кода {code} (3 сек) ---")
+        # ========== ЭТАП 8: Ввод кода ==========
+        print(f"\n--- ЭТАП 8: Ввод кода {code} (3 сек) ---")
         code_field = sb.find_element("input[name='code']")
         human_type(code_field, code)
         time.sleep(DELAY_STEP)
         
-        # ========== ЭТАП 7: Нажатие Continue после кода ==========
-        print("\n--- ЭТАП 7: Нажатие Continue (3 сек) ---")
-        sb.click("button[type='submit']")
-        time.sleep(DELAY_STEP)
-        
-        # ========== ЭТАП 8: Поиск поля пароля ==========
-        print("\n--- ЭТАП 8: Поиск поля пароля (3 сек) ---")
-        
-        password_field = find_password_field(sb, timeout=10)
-        if not password_field:
-            print("[-] Поле пароля не найдено")
-            return False
-        
-        time.sleep(DELAY_STEP)
-        
-        # ========== ЭТАП 9: Ввод пароля ==========
-        print(f"\n--- ЭТАП 9: Ввод пароля {chatgpt_password} (3 сек) ---")
-        human_type(password_field, chatgpt_password)
-        print("[✓] Пароль введён")
-        time.sleep(DELAY_STEP)
-        
-        # ========== ЭТАП 10: Нажатие Continue ==========
-        print("\n--- ЭТАП 10: Нажатие Continue (3 сек) ---")
+        # ========== ЭТАП 9: Нажатие Continue после кода ==========
+        print("\n--- ЭТАП 9: Нажатие Continue (3 сек) ---")
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
@@ -235,7 +218,7 @@ def main():
     print("=" * 60)
     print("ChatGPT Auto-Registrator")
     print(f"Фиксированный пароль: {FIXED_PASSWORD}")
-    print("Поиск поля пароля по тексту 'Password'")
+    print("Правильный порядок: email → пароль → код")
     print("Реалистичная печать как на клавиатуре")
     print(f"Пауза между этапами: {DELAY_STEP} секунд")
     print("=" * 60)
@@ -247,8 +230,8 @@ def main():
     print("\n⚠️ ПОРЯДОК ДЕЙСТВИЙ:")
     print("   1. Cloudflare обходится автоматически")
     print("   2. Email → Continue")
-    print("   3. Код из почты → Continue")
-    print(f"   4. Пароль {FIXED_PASSWORD} → Continue")
+    print(f"   3. Пароль {FIXED_PASSWORD} → Continue")
+    print("   4. Код из почты → Continue")
     print("=" * 60)
     
     try:
