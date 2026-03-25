@@ -3,7 +3,7 @@
 
 """
 ChatGPT Auto-Registrator
-Правильный порядок: email → пароль → код
+Правильный API Firstmail: https://firstmail.ltd/api/v1/email/messages
 """
 
 import time
@@ -18,7 +18,7 @@ from seleniumbase import SB
 # ===================== НАСТРОЙКИ =====================
 EMAILS_FILE = "emails.txt"
 OUTPUT_FILE = "chatgpt_accounts.txt"
-FIRSTMAIL_API = "https://firstmail.ltd/api/v1/email/messages"
+FIRSTMAIL_API_URL = "https://firstmail.ltd/api/v1/email/messages"
 FIRSTMAIL_TOKEN = "kv3wxML6Ibxo2ok1SPJCVonQIM09TWDgqjf0_S3BcVWIfvZVx9XlqcioEKn6qiXt"
 DELAY_STEP = 3
 FIXED_PASSWORD = "Mudakiv12345@"
@@ -31,6 +31,7 @@ def human_type(element, text, delay_min=0.08, delay_max=0.2):
         time.sleep(random.uniform(delay_min, delay_max))
 
 def get_verification_code(email, password, timeout=120):
+    """Получает код подтверждения из Firstmail API"""
     headers = {
         "Authorization": f"Bearer {FIRSTMAIL_TOKEN}",
         "Content-Type": "application/json"
@@ -46,26 +47,49 @@ def get_verification_code(email, password, timeout=120):
     while time.time() - start_time < timeout:
         print(f"[*] Проверка писем для {email}...")
         try:
-            response = requests.post(FIRSTMAIL_API, headers=headers, json=payload)
+            response = requests.post(
+                FIRSTMAIL_API_URL,  # Правильный URL
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            print(f"[DEBUG] Статус: {response.status_code}")
+            
             if response.status_code == 200:
-                data = response.json()
-                if data.get('success'):
-                    messages = data.get('data', {}).get('messages', [])
-                    for msg in messages:
-                        from_addr = msg.get('from', [])
-                        from_str = str(from_addr[0]) if isinstance(from_addr, list) else str(from_addr)
-                        if "openai.com" in from_str or "tm.openai.com" in from_str:
-                            subject = msg.get('subject', '')
-                            body = msg.get('body', '')
-                            full_text = subject + " " + body
-                            match = re.search(r'\b(\d{6})\b', full_text)
-                            if match:
-                                print(f"[+] Код найден: {match.group(1)}")
-                                return match.group(1)
-            time.sleep(5)
+                try:
+                    data = response.json()
+                    print(f"[DEBUG] Ответ: {data}")
+                    
+                    if data.get('success'):
+                        messages = data.get('data', {}).get('messages', [])
+                        print(f"[DEBUG] Найдено писем: {len(messages)}")
+                        
+                        for msg in messages:
+                            from_addr = msg.get('from', '')
+                            print(f"[DEBUG] Письмо от: {from_addr}")
+                            
+                            if "openai.com" in from_addr or "tm.openai.com" in from_addr:
+                                subject = msg.get('subject', '')
+                                body = msg.get('body', '')
+                                full_text = subject + " " + body
+                                match = re.search(r'\b(\d{6})\b', full_text)
+                                if match:
+                                    print(f"[+] Код найден: {match.group(1)}")
+                                    return match.group(1)
+                    else:
+                        print(f"[DEBUG] Ошибка в ответе: {data}")
+                except Exception as e:
+                    print(f"[DEBUG] Ошибка парсинга JSON: {e}")
+                    print(f"[DEBUG] Текст ответа: {response.text[:200]}")
+            else:
+                print(f"[DEBUG] HTTP ошибка: {response.status_code}")
+                print(f"[DEBUG] Текст: {response.text[:200]}")
+                
         except Exception as e:
             print(f"[!] Ошибка API: {e}")
-            time.sleep(5)
+        
+        time.sleep(5)
     
     print(f"[-] Код не получен за {timeout} сек")
     return None
@@ -117,6 +141,7 @@ def register_chatgpt(email, email_password):
     
     print(f"\n{'='*50}")
     print(f"[*] Почта: {email}")
+    print(f"[*] Пароль от почты: {email_password}")
     print(f"[*] Пароль ChatGPT: {chatgpt_password}")
     print(f"{'='*50}")
     
@@ -218,9 +243,7 @@ def main():
     print("=" * 60)
     print("ChatGPT Auto-Registrator")
     print(f"Фиксированный пароль: {FIXED_PASSWORD}")
-    print("Правильный порядок: email → пароль → код")
-    print("Реалистичная печать как на клавиатуре")
-    print(f"Пауза между этапами: {DELAY_STEP} секунд")
+    print("API Firstmail: https://firstmail.ltd/api/v1/email/messages")
     print("=" * 60)
     
     emails = load_emails()
