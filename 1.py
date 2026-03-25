@@ -3,7 +3,7 @@
 
 """
 ChatGPT Registration Bot
-Полная версия: Email → Пароль → Код → Имя → Дата → Continue
+Полная версия с улучшенным заполнением даты
 """
 
 import time
@@ -96,13 +96,6 @@ def get_verification_code(email, password, timeout=120):
     
     return None
 
-def find_field_by_type(sb, input_type, timeout=5):
-    try:
-        return sb.find_element(f"input[type='{input_type}']", timeout=timeout)
-    except:
-        pass
-    return None
-
 def find_field_by_label(sb, label_text, timeout=5):
     try:
         xpath = f"//label[contains(text(), '{label_text}')]"
@@ -126,23 +119,25 @@ def find_field_by_placeholder(sb, placeholder_text, timeout=5):
     return None
 
 def find_password_field(sb, timeout=10):
-    field = find_field_by_label(sb, "Password", timeout)
-    if field:
-        return field
-    field = find_field_by_placeholder(sb, "Password", timeout)
-    if field:
-        return field
-    field = find_field_by_type(sb, "password", timeout)
-    if field:
-        return field
+    # Ищем поле пароля
     try:
-        return sb.find_element("input[name*='password']", timeout=timeout)
+        field = sb.find_element("input[type='password']", timeout=timeout)
+        if field:
+            return field
     except:
         pass
+    
+    try:
+        field = sb.find_element("input[name*='password']", timeout=timeout)
+        if field:
+            return field
+    except:
+        pass
+    
     return None
 
 def fill_date_field(sb, birth_date):
-    """Заполняет поле даты рождения"""
+    """Заполняет поле даты рождения (улучшенная версия)"""
     print(f"[*] Заполняю дату: {birth_date}")
     
     # Способ 1: Ищем сегменты даты
@@ -156,13 +151,14 @@ def fill_date_field(sb, birth_date):
                     sb.execute_script("arguments[0].click();", seg)
                     time.sleep(0.3)
                     if i == 0:
-                        sb.type(seg, month)
+                        human_type(seg, month)
                     elif i == 1:
-                        sb.type(seg, day)
+                        human_type(seg, day)
                     else:
-                        sb.type(seg, year)
+                        human_type(seg, year)
                     time.sleep(0.3)
-                except:
+                except Exception as e:
+                    print(f"[-] Ошибка при вводе сегмента {i}: {e}")
                     pass
             
             print("[✓] Дата заполнена через сегменты")
@@ -174,8 +170,13 @@ def fill_date_field(sb, birth_date):
     try:
         date_field = sb.find_element("input[type='date']", timeout=3)
         if date_field:
-            date_field.clear()
-            human_type(date_field, birth_date)
+            date_field.click()
+            time.sleep(0.2)
+            try:
+                date_field.clear()
+            except:
+                pass
+            date_field.send_keys(birth_date.replace('/', ''))
             print("[✓] Дата заполнена через input date")
             return True
     except:
@@ -187,7 +188,12 @@ def fill_date_field(sb, birth_date):
         for label_text in labels:
             field = find_field_by_label(sb, label_text, 2)
             if field:
-                field.clear()
+                field.click()
+                time.sleep(0.2)
+                try:
+                    field.clear()
+                except:
+                    pass
                 human_type(field, birth_date)
                 print(f"[✓] Дата заполнена через лейбл: {label_text}")
                 return True
@@ -196,29 +202,37 @@ def fill_date_field(sb, birth_date):
     
     # Способ 4: Ищем по placeholder
     try:
-        placeholders = ["birth", "date", "дд/мм/гггг", "mm/dd/yyyy"]
+        placeholders = ["birth", "date", "дд/мм/гггг", "mm/dd/yyyy", "MM/DD/YYYY"]
         for ph in placeholders:
             field = find_field_by_placeholder(sb, ph, 2)
             if field:
-                field.clear()
-                human_type(field, birth_date)
+                field.click()
+                time.sleep(0.2)
+                try:
+                    field.clear()
+                except:
+                    pass
+                clean_date = birth_date.replace('/', '')
+                human_type(field, clean_date)
                 print(f"[✓] Дата заполнена через placeholder: {ph}")
                 return True
     except:
         pass
     
-    print("[!] Поле даты не найдено")
-    return False
-
-def check_account_exists(sb):
+    # Способ 5 (Резервный): Ищем по имени поля 'birthday' или id
     try:
-        error_texts = ["already registered", "already exists", "email already"]
-        page_source = sb.get_page_source().lower()
-        for text in error_texts:
-            if text in page_source:
-                return True
+        field = sb.find_element("input[name*='birth'], input[id*='birth']", timeout=2)
+        if field:
+            field.click()
+            time.sleep(0.2)
+            clean_date = birth_date.replace('/', '')
+            human_type(field, clean_date)
+            print("[✓] Дата заполнена через резервный поиск")
+            return True
     except:
         pass
+    
+    print("[!] Поле даты не найдено")
     return False
 
 def register_chatgpt(email, email_password):
@@ -250,9 +264,7 @@ def register_chatgpt(email, email_password):
         
         # 3. Email
         print("\n[3] Ввод email...")
-        email_field = find_field_by_type(sb, "email", 10)
-        if not email_field:
-            email_field = find_field_by_label(sb, "Email", 10)
+        email_field = sb.find_element("input[type='email']", timeout=10)
         if email_field:
             human_type(email_field, email)
             print(f"[✓] Email: {email}")
@@ -265,12 +277,7 @@ def register_chatgpt(email, email_password):
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
-        # 5. Проверка существования
-        if check_account_exists(sb):
-            print(f"[!] Аккаунт {email} уже существует")
-            return False
-        
-        # 6. Пароль
+        # 5. Пароль
         print("\n[5] Ввод пароля...")
         password_field = find_password_field(sb, timeout=10)
         if not password_field:
@@ -279,12 +286,12 @@ def register_chatgpt(email, email_password):
         print(f"[✓] Пароль: {chatgpt_password}")
         time.sleep(DELAY_STEP)
         
-        # 7. Continue
+        # 6. Continue
         print("\n[6] Continue...")
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
-        # 8. Ожидание кода
+        # 7. Ожидание кода
         print("\n[7] Ожидание кода...")
         try:
             sb.wait_for_element_visible("input[name='code']", timeout=30)
@@ -292,33 +299,33 @@ def register_chatgpt(email, email_password):
         except:
             return False
         
-        # 9. Получение кода
+        # 8. Получение кода
         print("\n[8] Получение кода...")
         code = get_verification_code(email, email_password, timeout=120)
         if not code:
             return False
         
-        # 10. Ввод кода
+        # 9. Ввод кода
         print(f"\n[9] Ввод кода: {code}")
         code_field = sb.find_element("input[name='code']")
         human_type(code_field, code)
         time.sleep(DELAY_STEP)
         
-        # 11. Continue
+        # 10. Continue
         print("\n[10] Continue...")
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
-        # 12. Имя
+        # 11. Имя
         print("\n[11] Ввод имени...")
         name_field = None
-        for selector in ["input[name='first_name']", "input[name='name']"]:
+        try:
+            name_field = sb.find_element("input[name='first_name']", timeout=5)
+        except:
             try:
-                name_field = sb.find_element(selector, timeout=3)
-                if name_field:
-                    break
+                name_field = sb.find_element("input[name='name']", timeout=5)
             except:
-                continue
+                pass
         
         if name_field:
             human_type(name_field, full_name)
@@ -328,12 +335,12 @@ def register_chatgpt(email, email_password):
         
         time.sleep(DELAY_STEP)
         
-        # 13. Дата рождения
+        # 12. Дата рождения
         print("\n[12] Ввод даты рождения...")
         fill_date_field(sb, birth_date)
         time.sleep(DELAY_STEP)
         
-        # 14. Continue
+        # 13. Continue
         print("\n[13] Continue...")
         try:
             sb.click("button[type='submit']")
@@ -367,7 +374,7 @@ def load_emails():
 def main():
     print("=" * 60)
     print("ChatGPT Registration Bot")
-    print("Порядок: Email → Пароль → Код → Имя → Дата → Continue")
+    print("Улучшенное заполнение даты (5 способов)")
     print("=" * 60)
     
     emails = load_emails()
