@@ -3,7 +3,7 @@
 
 """
 ChatGPT Registration Bot
-Простой IMAP поиск (без фильтрации)
+Упрощённый IMAP (получение всех писем)
 """
 
 import time
@@ -33,7 +33,7 @@ def human_type(element, text, delay_min=0.05, delay_max=0.15):
         time.sleep(random.uniform(delay_min, delay_max))
 
 def get_verification_code(email, password, timeout=120):
-    """Получает код через IMAP - простой поиск по всем письмам"""
+    """Получает код через IMAP - самый простой способ"""
     try:
         print(f"[*] Подключение к IMAP {FIRSTMAIL_IMAP}:{FIRSTMAIL_IMAP_PORT}")
         mail = imaplib.IMAP4_SSL(FIRSTMAIL_IMAP, FIRSTMAIL_IMAP_PORT)
@@ -44,45 +44,52 @@ def get_verification_code(email, password, timeout=120):
         last_msg_count = 0
         
         while time.time() - start_time < timeout:
-            # Получаем количество писем
-            result, data = mail.status('INBOX', '(MESSAGES)')
-            if result == 'OK':
-                msg_count = int(data[0].split()[2].decode())
-                print(f"[*] Писем в ящике: {msg_count}")
+            try:
+                # Просто получаем список всех писем
+                result, data = mail.uid('search', None, 'ALL')
                 
-                if msg_count > last_msg_count:
-                    print(f"[*] Новое письмо! (было {last_msg_count}, стало {msg_count})")
-                    last_msg_count = msg_count
+                if result == 'OK':
+                    uids = data[0].split()
+                    current_count = len(uids)
+                    print(f"[*] Писем: {current_count}")
                     
-                    # Получаем последние письма
-                    result, data = mail.fetch(str(msg_count), '(RFC822)')
-                    if result == 'OK':
-                        msg = email.message_from_bytes(data[0][1])
+                    if current_count > last_msg_count:
+                        print(f"[*] Новое письмо! (было {last_msg_count}, стало {current_count})")
+                        last_msg_count = current_count
                         
-                        # Отправитель
-                        from_header = msg.get("From", "")
-                        print(f"[DEBUG] От: {from_header}")
-                        
-                        # Тело письма
-                        body = ""
-                        if msg.is_multipart():
-                            for part in msg.walk():
-                                if part.get_content_type() == "text/plain":
-                                    payload = part.get_payload(decode=True)
+                        # Получаем последнее письмо
+                        if uids:
+                            latest_uid = uids[-1]
+                            result, msg_data = mail.uid('fetch', latest_uid, '(RFC822)')
+                            
+                            if result == 'OK':
+                                msg = email.message_from_bytes(msg_data[0][1])
+                                
+                                # Получаем тело письма
+                                body = ""
+                                if msg.is_multipart():
+                                    for part in msg.walk():
+                                        if part.get_content_type() == "text/plain":
+                                            payload = part.get_payload(decode=True)
+                                            body = payload.decode('utf-8', errors='ignore')
+                                            break
+                                else:
+                                    payload = msg.get_payload(decode=True)
                                     body = payload.decode('utf-8', errors='ignore')
-                                    break
-                        else:
-                            payload = msg.get_payload(decode=True)
-                            body = payload.decode('utf-8', errors='ignore')
-                        
-                        # Ищем код
-                        match = re.search(r'\b(\d{6})\b', body)
-                        if match:
-                            code = match.group(1)
-                            print(f"[+] Код найден: {code}")
-                            mail.close()
-                            mail.logout()
-                            return code
+                                
+                                # Ищем код
+                                match = re.search(r'\b(\d{6})\b', body)
+                                if match:
+                                    code = match.group(1)
+                                    print(f"[+] Код найден: {code}")
+                                    mail.close()
+                                    mail.logout()
+                                    return code
+                                else:
+                                    print("[*] Код не найден в письме")
+                    
+            except Exception as e:
+                print(f"[!] Ошибка при проверке: {e}")
             
             time.sleep(5)
         
@@ -91,10 +98,17 @@ def get_verification_code(email, password, timeout=120):
         
     except Exception as e:
         print(f"[!] Ошибка IMAP: {e}")
-        import traceback
-        traceback.print_exc()
     
     print(f"[-] Код не получен за {timeout} сек")
+    return None
+
+def find_field_by_type(sb, input_type, timeout=5):
+    try:
+        field = sb.find_element(f"input[type='{input_type}']", timeout=timeout)
+        if field:
+            return field
+    except:
+        pass
     return None
 
 def find_field_by_label(sb, label_text, timeout=5):
@@ -110,12 +124,6 @@ def find_field_by_label(sb, label_text, timeout=5):
                         return field
                 except:
                     pass
-            try:
-                field = sb.find_element(f"{xpath}/following-sibling::input", timeout=2)
-                if field:
-                    return field
-            except:
-                pass
     except:
         pass
     return None
@@ -129,40 +137,26 @@ def find_field_by_placeholder(sb, placeholder_text, timeout=5):
         pass
     return None
 
-def find_field_by_type(sb, input_type, timeout=5):
-    try:
-        field = sb.find_element(f"input[type='{input_type}']", timeout=timeout)
-        if field:
-            return field
-    except:
-        pass
-    return None
-
 def find_password_field(sb, timeout=10):
     field = find_field_by_label(sb, "Password", timeout)
     if field:
-        print("[✓] Поле пароля найдено по лейблу 'Password'")
         return field
     
     field = find_field_by_placeholder(sb, "Password", timeout)
     if field:
-        print("[✓] Поле пароля найдено по placeholder 'Password'")
         return field
     
     field = find_field_by_type(sb, "password", timeout)
     if field:
-        print("[✓] Поле пароля найдено по type='password'")
         return field
     
     try:
         field = sb.find_element("input[name*='password']", timeout=timeout)
         if field:
-            print("[✓] Поле пароля найдено по name*='password'")
             return field
     except:
         pass
     
-    print("[-] Поле пароля не найдено")
     return None
 
 def register_chatgpt(email, email_password):
@@ -272,7 +266,7 @@ def load_emails():
 def main():
     print("=" * 60)
     print("ChatGPT Registration Bot")
-    print(f"IMAP: {FIRSTMAIL_IMAP}:{FIRSTMAIL_IMAP_PORT}")
+    print("Упрощённый IMAP (UID search)")
     print("=" * 60)
     
     emails = load_emails()
