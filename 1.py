@@ -3,8 +3,7 @@
 
 """
 ChatGPT Registration Bot
-Полная версия: Email → Пароль → Код → Имя → Дата → Continue
-С пропуском уже существующих аккаунтов
+С CyberGhost VPN для Linux и правильным заполнением даты
 """
 
 import time
@@ -13,6 +12,7 @@ import string
 import os
 import imaplib
 import re
+import subprocess
 
 from seleniumbase import SB
 
@@ -26,10 +26,40 @@ FIXED_PASSWORD = "Mudakiv12345@"
 FIRSTMAIL_IMAP = "imap.firstmail.ltd"
 FIRSTMAIL_IMAP_PORT = 993
 
+# CyberGhost для Linux
+CYBERGHOST_CMD = "cyberghostvpn"
+VPN_COUNTRIES = ["us", "uk", "de", "fr", "ca", "nl", "jp", "au"]
+
 # Списки для генерации имени
-FIRST_NAMES = ["John", "James", "Robert", "Michael", "William", "David", "Richard", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Mark", "Donald", "Steven"]
-LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson"]
+FIRST_NAMES = ["John", "James", "Robert", "Michael", "William", "David", "Richard", "Thomas", "Charles", "Daniel"]
+LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]
 # =====================================================
+
+def change_vpn():
+    """Меняет VPN через CyberGhost"""
+    try:
+        country = random.choice(VPN_COUNTRIES)
+        print(f"[*] Смена VPN на {country.upper()}...")
+        
+        # Отключаем текущий VPN
+        subprocess.run([CYBERGHOST_CMD, "--stop"], capture_output=True, timeout=30)
+        time.sleep(3)
+        
+        # Подключаемся к новой стране
+        result = subprocess.run([CYBERGHOST_CMD, "--country", country, "--connect"], 
+                                capture_output=True, timeout=60)
+        
+        if result.returncode == 0:
+            print(f"[✓] VPN подключён к {country.upper()}")
+            time.sleep(5)
+            return True
+        else:
+            print(f"[!] Ошибка: {result.stderr.decode()}")
+            return False
+            
+    except Exception as e:
+        print(f"[!] Ошибка VPN: {e}")
+        return False
 
 def generate_full_name():
     first = random.choice(FIRST_NAMES)
@@ -49,7 +79,7 @@ def human_type(element, text, delay_min=0.05, delay_max=0.15):
 
 def get_verification_code(email, password, timeout=120):
     try:
-        print(f"[*] Подключаюсь к {FIRSTMAIL_IMAP}:{FIRSTMAIL_IMAP_PORT}")
+        print(f"[*] Подключаюсь к IMAP...")
         mail = imaplib.IMAP4_SSL(FIRSTMAIL_IMAP, FIRSTMAIL_IMAP_PORT)
         mail.login(email, password)
         mail.select('inbox')
@@ -84,8 +114,6 @@ def get_verification_code(email, password, timeout=120):
                             mail.close()
                             mail.logout()
                             return code
-                        else:
-                            print("[*] Код не найден в письме")
                 else:
                     print(f"[*] Жду письмо... ({current_count} писем)")
             
@@ -95,9 +123,8 @@ def get_verification_code(email, password, timeout=120):
         mail.logout()
         
     except Exception as e:
-        print(f"[!] Ошибка: {e}")
+        print(f"[!] Ошибка IMAP: {e}")
     
-    print("[-] Код не получен")
     return None
 
 def find_field_by_type(sb, input_type, timeout=5):
@@ -145,30 +172,45 @@ def find_password_field(sb, timeout=10):
         pass
     return None
 
-def check_account_exists(sb):
-    """Проверяет, существует ли уже аккаунт"""
+def fill_date_field(sb, birth_date):
+    """Заполняет сегментированное поле даты"""
     try:
-        # Проверяем наличие сообщения об ошибке
-        error_texts = [
-            "already registered",
-            "already exists",
-            "email already",
-            "уже зарегистрирован",
-            "уже существует"
-        ]
+        # Ищем все сегменты даты
+        segments = sb.find_elements("[data-rac-data-type]")
         
+        if len(segments) >= 3:
+            month, day, year = birth_date.split('/')
+            
+            # Месяц
+            sb.execute_script("arguments[0].click();", segments[0])
+            human_type(segments[0], month)
+            time.sleep(0.5)
+            
+            # День
+            sb.execute_script("arguments[0].click();", segments[1])
+            human_type(segments[1], day)
+            time.sleep(0.5)
+            
+            # Год
+            sb.execute_script("arguments[0].click();", segments[2])
+            human_type(segments[2], year)
+            time.sleep(0.5)
+            
+            print(f"[✓] Дата заполнена: {birth_date}")
+            return True
+    except Exception as e:
+        print(f"[!] Ошибка заполнения даты: {e}")
+    
+    return False
+
+def check_account_exists(sb):
+    """Проверяет, существует ли аккаунт"""
+    try:
+        error_texts = ["already registered", "already exists", "email already", "уже зарегистрирован"]
         page_source = sb.get_page_source().lower()
         for text in error_texts:
             if text in page_source:
-                print(f"[!] Аккаунт уже существует (найдено: {text})")
                 return True
-        
-        # Проверяем, перенаправило ли на страницу входа
-        current_url = sb.get_current_url().lower()
-        if "login" in current_url:
-            print("[!] Аккаунт уже существует (перенаправление на login)")
-            return True
-            
     except:
         pass
     return False
@@ -182,7 +224,7 @@ def register_chatgpt(email, email_password):
     print(f"[*] Почта: {email}")
     print(f"[*] Пароль ChatGPT: {chatgpt_password}")
     print(f"[*] Имя: {full_name}")
-    print(f"[*] Дата рождения: {birth_date}")
+    print(f"[*] Дата: {birth_date}")
     print(f"{'='*50}")
     
     with SB(uc=True, headless=False) as sb:
@@ -200,7 +242,7 @@ def register_chatgpt(email, email_password):
             sb.click("//button[contains(text(), 'Sign up')]", timeout=10)
         time.sleep(DELAY_STEP)
         
-        # 3. Ввод email
+        # 3. Email
         print("\n[3] Ввод email...")
         email_field = find_field_by_type(sb, "email", 10)
         if not email_field:
@@ -209,7 +251,6 @@ def register_chatgpt(email, email_password):
             human_type(email_field, email)
             print(f"[✓] Email: {email}")
         else:
-            print("[-] Поле email не найдено")
             return False
         time.sleep(DELAY_STEP)
         
@@ -218,20 +259,17 @@ def register_chatgpt(email, email_password):
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
-        # 5. Проверка существования аккаунта ПОСЛЕ ввода email
+        # 5. Проверка существования
         if check_account_exists(sb):
-            print(f"[!] Аккаунт {email} уже существует, пропускаем...")
-            return False  # Пропускаем этот аккаунт
-        
-        # 6. Пароль
-        print("\n[5] Поиск поля пароля...")
-        password_field = find_password_field(sb, timeout=10)
-        if not password_field:
-            print("[-] Поле пароля не найдено")
+            print(f"[!] Аккаунт {email} уже существует")
             return False
         
+        # 6. Пароль
+        print("\n[5] Ввод пароля...")
+        password_field = find_password_field(sb, timeout=10)
+        if not password_field:
+            return False
         human_type(password_field, chatgpt_password)
-        print(f"[✓] Пароль: {chatgpt_password}")
         time.sleep(DELAY_STEP)
         
         # 7. Continue
@@ -243,9 +281,7 @@ def register_chatgpt(email, email_password):
         print("\n[7] Ожидание кода...")
         try:
             sb.wait_for_element_visible("input[name='code']", timeout=30)
-            print("[✓] Поле кода появилось")
         except:
-            print("[-] Поле кода не появилось")
             return False
         
         # 9. Получение кода
@@ -265,115 +301,57 @@ def register_chatgpt(email, email_password):
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
-        # 12. Ввод имени
-        print("\n[11] Поиск поля имени...")
+        # 12. Имя
+        print("\n[11] Ввод имени...")
         name_field = None
-        name_selectors = [
-            "input[name='first_name']",
-            "input[name='name']",
-            "input[placeholder*='Name']",
-            "input[placeholder*='name']"
-        ]
-        for selector in name_selectors:
+        for selector in ["input[name='first_name']", "input[name='name']"]:
             try:
                 name_field = sb.find_element(selector, timeout=3)
-                if name_field and name_field.is_displayed():
-                    print(f"[✓] Найдено поле имени: {selector}")
+                if name_field:
                     break
             except:
                 continue
         
         if name_field:
             human_type(name_field, full_name)
-            print(f"[✓] Имя: {full_name}")
             time.sleep(DELAY_STEP)
             try:
                 sb.click("button[type='submit']")
-                print("[✓] Continue после имени")
-                time.sleep(DELAY_STEP)
-            except:
-                pass
-        else:
-            print("[!] Поле имени не найдено")
-        
-        # 13. Ввод даты рождения
-        print("\n[12] Поиск поля даты рождения...")
-        date_field = None
-        
-        date_selectors = [
-            "input[name='birth_date']",
-            "input[name='date_of_birth']",
-            "input[name='dob']",
-            "input[placeholder*='birth']",
-            "input[placeholder*='Birth']",
-            "input[placeholder*='date']",
-            "input[placeholder*='Date']",
-            "input[type='date']"
-        ]
-        
-        for selector in date_selectors:
-            try:
-                date_field = sb.find_element(selector, timeout=2)
-                if date_field and date_field.is_displayed():
-                    print(f"[✓] Найдено поле даты: {selector}")
-                    break
-            except:
-                continue
-        
-        # По лейблу "Date of Birth"
-        if not date_field:
-            try:
-                label = sb.find_element("//label[contains(text(), 'Date of Birth')]", timeout=2)
-                if label:
-                    for_id = label.get_attribute("for")
-                    if for_id:
-                        date_field = sb.find_element(f"#{for_id}", timeout=2)
-                        if date_field:
-                            print("[✓] Поле даты найдено по лейблу 'Date of Birth'")
             except:
                 pass
         
-        # По лейблу "Birth date"
-        if not date_field:
+        # 13. Дата рождения
+        print("\n[12] Ввод даты рождения...")
+        if not fill_date_field(sb, birth_date):
+            # Пробуем обычный input
             try:
-                label = sb.find_element("//label[contains(text(), 'Birth date')]", timeout=2)
-                if label:
-                    for_id = label.get_attribute("for")
-                    if for_id:
-                        date_field = sb.find_element(f"#{for_id}", timeout=2)
-                        if date_field:
-                            print("[✓] Поле даты найдено по лейблу 'Birth date'")
+                date_field = sb.find_element("input[type='date']", timeout=3)
+                if date_field:
+                    date_field.clear()
+                    human_type(date_field, birth_date)
             except:
                 pass
         
-        if date_field:
-            try:
-                date_field.clear()
-            except:
-                pass
-            human_type(date_field, birth_date)
-            print(f"[✓] Дата рождения: {birth_date}")
-            time.sleep(DELAY_STEP)
-            try:
-                sb.click("button[type='submit']")
-                print("[✓] Continue после даты")
-                time.sleep(DELAY_STEP)
-            except:
-                pass
-        else:
-            print("[!] Поле даты не найдено")
+        # 14. Finish
+        print("\n[13] Завершение...")
+        try:
+            sb.click("button[type='submit']")
+        except:
+            pass
+        
+        time.sleep(DELAY_STEP)
         
         # Сохранение
-        with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
+        with open(OUTPUT_FILE, 'a') as f:
             f.write(f"{email}:{chatgpt_password}\n")
         
-        print(f"\n[+] Аккаунт ChatGPT сохранён: {email}")
+        print(f"\n[+] Аккаунт сохранён: {email}")
         return True
 
 def load_emails():
     emails = []
     try:
-        with open(EMAILS_FILE, 'r', encoding='utf-8') as f:
+        with open(EMAILS_FILE, 'r') as f:
             for line in f:
                 line = line.strip()
                 if line and ':' in line:
@@ -386,9 +364,21 @@ def load_emails():
 
 def main():
     print("=" * 60)
-    print("ChatGPT Registration Bot")
-    print("Полная версия с пропуском существующих аккаунтов")
+    print("ChatGPT Registration Bot with CyberGhost VPN")
     print("=" * 60)
+    
+    # Проверка CyberGhost
+    print("\n[0] Проверка CyberGhost...")
+    result = subprocess.run([CYBERGHOST_CMD, "--status"], capture_output=True)
+    if result.returncode != 0:
+        print("[!] CyberGhost не установлен или не авторизован")
+        print("Установите и войдите:")
+        print("  sudo dpkg -i cyberghostvpn-*.deb")
+        print("  cyberghostvpn --login")
+        return
+    
+    # Подключаем VPN перед началом
+    change_vpn()
     
     emails = load_emails()
     if not emails:
@@ -398,27 +388,23 @@ def main():
     count = min(count, len(emails))
     
     success = 0
-    skipped = 0
-    
     for i in range(count):
         email, email_password = emails[i]
         print(f"\n{'#'*50}")
         print(f"Аккаунт {i+1}/{count}")
         print(f"{'#'*50}")
         
-        result = register_chatgpt(email, email_password)
-        if result:
+        if register_chatgpt(email, email_password):
             success += 1
+            # После успешной регистрации меняем VPN
+            if i < count - 1:
+                change_vpn()
         else:
-            # Проверяем, был ли пропущен из-за существующего аккаунта
-            skipped += 1
-            print(f"[-] Аккаунт {email} пропущен")
+            print(f"[-] Ошибка")
         
-        if i < count - 1:
-            print("\n[*] Ожидание 10 сек...")
-            time.sleep(10)
+        time.sleep(5)
     
-    print(f"\n✅ Готово: создано {success}, пропущено {skipped}")
+    print(f"\n✅ Готово: {success}/{count}")
     print(f"📁 Файл: {OUTPUT_FILE}")
 
 if __name__ == "__main__":
