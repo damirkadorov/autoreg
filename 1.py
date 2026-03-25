@@ -3,7 +3,7 @@
 
 """
 ChatGPT Registration Bot
-Исправленный IMAP
+Финальная IMAP версия
 """
 
 import time
@@ -45,7 +45,6 @@ def get_verification_code(email, password, timeout=120):
         
         while time.time() - start_time < timeout:
             try:
-                # Получаем список UID всех писем
                 result, data = mail.uid('search', None, 'ALL')
                 
                 if result == 'OK':
@@ -53,24 +52,25 @@ def get_verification_code(email, password, timeout=120):
                     if uids:
                         current_uid = uids[-1]
                         
-                        # Если новое письмо
                         if current_uid != last_uid:
                             print(f"[*] Новое письмо! UID: {current_uid.decode()}")
                             last_uid = current_uid
                             
-                            # Получаем письмо
                             result, msg_data = mail.uid('fetch', current_uid, '(RFC822)')
                             
                             if result == 'OK':
-                                # msg_data[0][1] — это байты письма
-                                raw_email = msg_data[0][1]
-                                if isinstance(raw_email, bytes):
-                                    msg = email.message_from_bytes(raw_email)
-                                else:
-                                    # Если строка, конвертируем
-                                    msg = email.message_from_string(str(raw_email))
+                                # msg_data[0][1] может быть байтами или строкой
+                                raw_data = msg_data[0][1]
                                 
-                                # Получаем тело
+                                # Конвертируем в байты если нужно
+                                if isinstance(raw_data, str):
+                                    raw_email = raw_data.encode('utf-8')
+                                else:
+                                    raw_email = raw_data
+                                
+                                msg = email.message_from_bytes(raw_email)
+                                
+                                # Получаем тело письма
                                 body = ""
                                 if msg.is_multipart():
                                     for part in msg.walk():
@@ -96,13 +96,9 @@ def get_verification_code(email, password, timeout=120):
                             print(f"[*] Новых писем нет. Всего: {len(uids)}")
                     else:
                         print("[*] Писем нет")
-                else:
-                    print("[!] Ошибка поиска")
                     
             except Exception as e:
-                print(f"[!] Ошибка при проверке: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"[!] Ошибка: {e}")
             
             time.sleep(5)
         
@@ -111,8 +107,6 @@ def get_verification_code(email, password, timeout=120):
         
     except Exception as e:
         print(f"[!] Ошибка IMAP: {e}")
-        import traceback
-        traceback.print_exc()
     
     print(f"[-] Код не получен за {timeout} сек")
     return None
@@ -277,7 +271,7 @@ def load_emails():
 def main():
     print("=" * 60)
     print("ChatGPT Registration Bot")
-    print("Исправленный IMAP")
+    print("Финальная IMAP версия")
     print("=" * 60)
     
     emails = load_emails()
