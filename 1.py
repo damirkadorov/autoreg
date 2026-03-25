@@ -3,7 +3,7 @@
 
 """
 ChatGPT Registration Bot
-Простой IMAP - скачиваем письмо и ищем код
+Полная версия: Email → Пароль → Код → Имя → Дата → Continue
 """
 
 import time
@@ -11,7 +11,6 @@ import random
 import string
 import os
 import imaplib
-import email
 import re
 
 from seleniumbase import SB
@@ -25,7 +24,24 @@ FIXED_PASSWORD = "Mudakiv12345@"
 # IMAP для Firstmail
 FIRSTMAIL_IMAP = "imap.firstmail.ltd"
 FIRSTMAIL_IMAP_PORT = 993
+
+# Списки для генерации имени
+FIRST_NAMES = ["John", "James", "Robert", "Michael", "William", "David", "Richard", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Mark", "Donald", "Steven"]
+LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson"]
 # =====================================================
+
+def generate_full_name():
+    """Генерирует случайное имя и фамилию"""
+    first = random.choice(FIRST_NAMES)
+    last = random.choice(LAST_NAMES)
+    return f"{first} {last}"
+
+def generate_birth_date():
+    """Генерирует дату рождения в формате MM/DD/YYYY"""
+    month = random.randint(1, 12)
+    day = random.randint(1, 28)  # Чтобы избежать проблем с 31 числом
+    year = random.randint(1970, 2005)
+    return f"{month:02d}/{day:02d}/{year}"
 
 def human_type(element, text, delay_min=0.05, delay_max=0.15):
     for char in text:
@@ -44,7 +60,6 @@ def get_verification_code(email, password, timeout=120):
         last_count = 0
         
         while time.time() - start_time < timeout:
-            # Получаем список писем
             result, data = mail.search(None, 'ALL')
             if result == 'OK':
                 uids = data[0].split()
@@ -54,21 +69,16 @@ def get_verification_code(email, password, timeout=120):
                     print(f"[*] Новое письмо! Всего: {current_count}")
                     last_count = current_count
                     
-                    # Берём последнее письмо
                     latest = uids[-1]
                     result, msg_data = mail.fetch(latest, '(RFC822)')
                     
                     if result == 'OK':
-                        # Берём письмо
                         raw_email = msg_data[0][1]
-                        
-                        # Преобразуем в строку если нужно
                         if isinstance(raw_email, bytes):
                             msg_str = raw_email.decode('utf-8', errors='ignore')
                         else:
                             msg_str = str(raw_email)
                         
-                        # Ищем 6-значный код
                         match = re.search(r'\b(\d{6})\b', msg_str)
                         if match:
                             code = match.group(1)
@@ -140,10 +150,14 @@ def find_password_field(sb, timeout=10):
 
 def register_chatgpt(email, email_password):
     chatgpt_password = FIXED_PASSWORD
+    full_name = generate_full_name()
+    birth_date = generate_birth_date()
     
     print(f"\n{'='*50}")
     print(f"[*] Почта: {email}")
     print(f"[*] Пароль ChatGPT: {chatgpt_password}")
+    print(f"[*] Имя: {full_name}")
+    print(f"[*] Дата рождения: {birth_date}")
     print(f"{'='*50}")
     
     with SB(uc=True, headless=False) as sb:
@@ -221,11 +235,77 @@ def register_chatgpt(email, email_password):
         sb.click("button[type='submit']")
         time.sleep(DELAY_STEP)
         
+        # 11. Ввод имени (Full Name)
+        print("\n[11] Поиск поля имени...")
+        name_field = None
+        name_selectors = [
+            "input[name='first_name']",
+            "input[name='name']",
+            "input[placeholder*='Name']",
+            "input[placeholder*='name']"
+        ]
+        for selector in name_selectors:
+            try:
+                name_field = sb.find_element(selector, timeout=3)
+                if name_field and name_field.is_displayed():
+                    print(f"[✓] Найдено поле имени: {selector}")
+                    break
+            except:
+                continue
+        
+        if name_field:
+            human_type(name_field, full_name)
+            print(f"[✓] Имя: {full_name}")
+            time.sleep(DELAY_STEP)
+            
+            # Continue после имени
+            try:
+                sb.click("button[type='submit']")
+                print("[✓] Continue после имени")
+                time.sleep(DELAY_STEP)
+            except:
+                pass
+        else:
+            print("[!] Поле имени не найдено")
+        
+        # 12. Ввод даты рождения
+        print("\n[12] Поиск поля даты рождения...")
+        date_field = None
+        date_selectors = [
+            "input[name='birth_date']",
+            "input[placeholder*='birth']",
+            "input[placeholder*='Birth']",
+            "input[type='date']"
+        ]
+        for selector in date_selectors:
+            try:
+                date_field = sb.find_element(selector, timeout=3)
+                if date_field and date_field.is_displayed():
+                    print(f"[✓] Найдено поле даты: {selector}")
+                    break
+            except:
+                continue
+        
+        if date_field:
+            human_type(date_field, birth_date)
+            print(f"[✓] Дата рождения: {birth_date}")
+            time.sleep(DELAY_STEP)
+            
+            # Continue после даты
+            try:
+                sb.click("button[type='submit']")
+                print("[✓] Continue после даты")
+                time.sleep(DELAY_STEP)
+            except:
+                pass
+        else:
+            print("[!] Поле даты не найдено")
+        
         # Сохранение
         with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
             f.write(f"{email}:{chatgpt_password}\n")
         
-        print(f"\n[+] Аккаунт сохранён: {email}")
+        print(f"\n[+] Аккаунт ChatGPT сохранён: {email}")
         return True
 
 def load_emails():
@@ -245,7 +325,7 @@ def load_emails():
 def main():
     print("=" * 60)
     print("ChatGPT Registration Bot")
-    print("Простой IMAP - скачиваем письмо")
+    print("Полная версия: Email → Пароль → Код → Имя → Дата")
     print("=" * 60)
     
     emails = load_emails()
